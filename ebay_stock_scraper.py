@@ -173,20 +173,13 @@ def configure_logging(verbose: bool) -> None:
     )
 
 
-def load_variants_from_excel(
-    path: Path,
-    limit: Optional[int] = None,
-    start_row: int = 1,
-) -> List[VariantRecord]:
+def load_variants_from_excel(path: Path, limit: Optional[int] = None) -> List[VariantRecord]:
     if not path.exists():
         raise FileNotFoundError(path)
 
     df = pd.read_excel(path)
     if df.empty:
         return []
-
-    if start_row is None or start_row < 1:
-        start_row = 1
 
     header_row = df.iloc[0]
     resolved_headers = []
@@ -240,7 +233,6 @@ def load_variants_from_excel(
     df["listing_url"] = df["listing_url"].astype(str).str.strip()
 
     records: List[VariantRecord] = []
-    history_records: List[VariantRecord] = []
     last_variation_by_listing: Dict[str, Optional[str]] = {}
     for idx, row in enumerate(df.itertuples(index=False), start=1):
         raw_url = getattr(row, "listing_url")
@@ -276,7 +268,7 @@ def load_variants_from_excel(
             if current_size:
                 # Look back through previous rows with the same base listing URL
                 for prev_idx in range(idx - 1, 0, -1):
-                    prev_record = history_records[prev_idx - 1]
+                    prev_record = records[prev_idx - 1]  # records list is 0-indexed
                     if prev_record.listing_url == base_url:
                         # Check if previous record has a valid color that matches the pattern
                         if prev_record.variation and " - Greekey" in prev_record.variation:
@@ -288,7 +280,7 @@ def load_variants_from_excel(
                             # inherit the color
                             if prev_size_clean:
                                 color = prev_record.variation
-                                LOGGER.debug("Inherited color '%s' from previous row %d for size %s",
+                                LOGGER.debug("Inherited color '%s' from previous row %d for size %s", 
                                            color, prev_record.excel_row, current_size)
                                 break
                         elif prev_record.stock_name and not color:
@@ -316,23 +308,21 @@ def load_variants_from_excel(
             size_value = dimensions
         if not size_value:
             size_value = pack_type
-        record = VariantRecord(
-            row_index=idx,
-            excel_row=idx + 2,  # account for excel header row + header data row
-            source_url=raw_url,
-            sr_no=getattr(row, "sr_no", None),
-            stock_name=product_name,
-            variation=color,
-            size=size_value,
-            dimensions=dimensions,
-            sheet_stock_status=status_value,
-            item_number=str(getattr(row, "item_number", "")) if getattr(row, "item_number", None) else None,
-            listing_url=base_url,
+        records.append(
+            VariantRecord(
+                row_index=idx,
+                excel_row=idx + 2,  # account for excel header row + header data row
+                source_url=raw_url,
+                sr_no=getattr(row, "sr_no", None),
+                stock_name=product_name,
+                variation=color,
+                size=size_value,
+                dimensions=dimensions,
+                sheet_stock_status=status_value,
+                item_number=str(getattr(row, "item_number", "")) if getattr(row, "item_number", None) else None,
+                listing_url=base_url,
+            )
         )
-        history_records.append(record)
-        if idx < start_row:
-            continue
-        records.append(record)
         if limit is not None and len(records) >= limit:
             break
     return records
@@ -1031,10 +1021,10 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Limit the number of listing rows to process.",
     )
     parser.add_argument(
-        "--start-row",
+        "--offset",
         type=int,
-        default=1,
-        help="1-based row index (excluding header rows) to start processing from.",
+        default=0,
+        help="Skip the first N rows before processing (default: 0). Use with --limit to process a specific range.",
     )
     parser.add_argument(
         "--output",
@@ -1157,11 +1147,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     configure_logging(args.verbose)
 
     try:
-        records = load_variants_from_excel(
-            args.excel,
-            limit=args.limit,
-            start_row=args.start_row,
-        )
+        records = load_variants_from_excel(args.excel, limit=args.limit)
     except Exception as exc:  # pylint: disable=broad-except
         LOGGER.error("Failed to load spreadsheet: %s", exc)
         return 1
@@ -1169,6 +1155,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not records:
         LOGGER.warning("No listing rows found in spreadsheet.")
         return 0
+    
+    # Apply offset if specified
+    if args.offset > 0:
+        if args.offset >= len(records):
+            LOGGER.warning("Offset %d is >= total records %d, nothing to process.", args.offset, len(records))
+            return 0
+        LOGGER.info("Skipping first %d rows, processing from row %d onwards", args.offset, args.offset + 1)
+        records = records[args.offset:]
 
     if args.engine == "chromium":
         results_df = process_variants_chromium(records, args.delay, args.retries, args.cookie, args.chromium_profile)
