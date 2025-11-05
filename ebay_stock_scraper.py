@@ -1102,8 +1102,8 @@ def update_sheet_with_results(input_path: Path, output_path: Path, results_df: p
         "IN_STOCK": "INSTOCK",
         "OUT_OF_STOCK": "OUT OF STOCK",
         "BLOCKED": "BLOCKED",
-        "ERROR": "ERROR",
-        "UNKNOWN": "UNKNOWN",
+        "ERROR": "ERROR",  # Variant doesn't exist on eBay listing
+        "UNKNOWN": "ERROR",  # Treat unknown as error
     }
 
     status_by_row = {}
