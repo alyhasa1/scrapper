@@ -481,13 +481,27 @@ def normalize_label(text: str) -> str:
 
 
 def extract_base_colour(colour_text: str) -> str:
-    """Extract base colour name by removing seller-specific suffixes."""
-    # Remove common suffixes like "- Greekey", "- Gel Back 59", "- MR (41)", etc.
+    """Extract base colour name by removing seller-specific suffixes and prefixes."""
     text = colour_text.strip()
-    # Split on first dash and take the part before it
+    
+    # Handle "GelBack-Pink" format (prefix-colour) -> extract "pink"
+    if text.lower().startswith('gelback-') or text.lower().startswith('gel back-'):
+        # Remove the prefix and return the colour part
+        parts = text.split('-', 1)
+        if len(parts) == 2:
+            return parts[1].strip().lower()
+    
+    # Handle "Pink - Gel Back 59" format (colour - suffix) -> extract "pink"
     if ' - ' in text:
         base = text.split(' - ')[0].strip()
         return base.lower()
+    
+    # Handle "GelBack Pink" format (prefix space colour) -> extract "pink"
+    if text.lower().startswith('gelback ') or text.lower().startswith('gel back '):
+        parts = text.split(' ', 1)
+        if len(parts) == 2:
+            return parts[1].strip().lower()
+    
     return text.lower()
 
 
