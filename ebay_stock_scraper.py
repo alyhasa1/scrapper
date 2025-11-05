@@ -500,6 +500,8 @@ def extract_base_size(size_text: str) -> str:
         text = text.split('(')[0].strip()
     # Remove "Most popular", "selected", etc.
     text = text.replace('Most popular', '').replace('selected', '').strip()
+    # Remove units like "cm", "mm", "m" at the end
+    text = text.replace(' cm', '').replace(' mm', '').replace(' m', '').strip()
     return text.lower()
 
 
@@ -523,17 +525,19 @@ def option_matches(option_text: str, target: str) -> bool:
                         option_text, option_base, target, target_base)
             return True
     
-    # For size matching: strip imperial measurements and compare
-    # Check if this looks like a size (contains "cm" or "x" followed by digits)
-    if ('cm' in option_text.lower() or ('x' in option_text.lower() and any(c.isdigit() for c in option_text))):
+    # For size matching: strip imperial measurements, units, and compare
+    # Check if this looks like a size (contains "cm", "mm", "m", or "x" followed by digits)
+    if ('cm' in option_text.lower() or 'mm' in option_text.lower() or 
+        ('x' in option_text.lower() and any(c.isdigit() for c in option_text)) or
+        ('x' in target.lower() and any(c.isdigit() for c in target))):
         option_base = extract_base_size(option_text)
         target_base = extract_base_size(target)
         # Normalize spaces around 'x' for comparison (e.g., "60x110" vs "60 x 110")
         option_base_clean = option_base.replace(' ', '')
         target_base_clean = target_base.replace(' ', '')
-        if option_base == target_base or target_base in option_base or option_base_clean == target_base_clean:
-            LOGGER.debug("Match via size base: option '%s' -> '%s', target '%s' -> '%s'", 
-                        option_text, option_base, target, target_base)
+        if option_base_clean == target_base_clean or target_base_clean in option_base_clean:
+            LOGGER.debug("Match via size base: option '%s' -> '%s' ('%s'), target '%s' -> '%s' ('%s')", 
+                        option_text, option_base, option_base_clean, target, target_base, target_base_clean)
             return True
     
     LOGGER.debug("No match: option '%s', target '%s'", option_text, target)
