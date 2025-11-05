@@ -877,25 +877,39 @@ def process_variants_chromium(
                     used_indices: set = set()
                     dimension_results: List[str] = []
 
-                    # Build dimension order
-                    dimensions: List[Tuple[str, str]] = []
+                    # Build dimension order dynamically based on actual group order on page
+                    # First, find which group corresponds to each dimension
+                    dimensions_with_group: List[Tuple[int, str, str]] = []  # (group_idx, dim_type, dim_value)
+                    
                     if record.variation:
-                        dimensions.append(("variation", str(record.variation)))
-                        LOGGER.debug("Selecting colour first: %s", record.variation)
+                        group_idx = find_group_for_dimension(groups, "variation", set())
+                        if group_idx is not None:
+                            dimensions_with_group.append((group_idx, "variation", str(record.variation)))
+                            LOGGER.debug("Found colour group at index %d: %s", group_idx, record.variation)
+                        else:
+                            LOGGER.debug("No colour group found for row %s (item %s)", record.row_index, record.item_number or record.base_item_id)
                     else:
                         LOGGER.debug("No colour provided for row %s (item %s)", record.row_index, record.item_number or record.base_item_id)
+                    
                     if record.size:
-                        dimensions.append(("size", str(record.size)))
+                        group_idx = find_group_for_dimension(groups, "size", set())
+                        if group_idx is not None:
+                            dimensions_with_group.append((group_idx, "size", str(record.size)))
+                            LOGGER.debug("Found size group at index %d: %s", group_idx, record.size)
+                        else:
+                            LOGGER.debug("No size group found for row %s (item %s)", record.row_index, record.item_number or record.base_item_id)
                     else:
                         LOGGER.debug("No size provided for row %s (item %s)", record.row_index, record.item_number or record.base_item_id)
+                    
+                    # Sort by group index to process in page order (color-first or size-first)
+                    dimensions_with_group.sort(key=lambda x: x[0])
+                    LOGGER.debug("Processing dimensions in page order: %s", [(dt, dv) for _, dt, dv in dimensions_with_group])
 
                     selection_failed = False
-                    for dim_type, dim_value in dimensions:
-                        group_idx = find_group_for_dimension(groups, dim_type, used_indices)
-                        if group_idx is None:
-                            selection_failed = True
-                            error_message = f"No variant group found for {dim_type}"
-                            break
+                    for group_idx, dim_type, dim_value in dimensions_with_group:
+                        if group_idx in used_indices:
+                            LOGGER.warning("Group %d already used, skipping", group_idx)
+                            continue
                         used_indices.add(group_idx)
                         group = groups[group_idx]
                         ok, failure_reason = select_option_from_group(page, group, dim_value)
