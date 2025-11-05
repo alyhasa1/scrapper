@@ -8,14 +8,22 @@ __pycache__/
 .env/
 venv/
 
+# Playwright user data
+chromium_profile/
+
 # Playwright artifacts
 playwright/.cache/
 
 # Excel outputs and backups
 backups/
+*.tmp.xlsx
+~$*.xlsx
 results_*.xlsx
 sheet_*.xlsx
 *.csv
+
+# Primary workbook (treated as user data snapshot)
+ECOMWITH YASIR STOCK PRODUCTS SHEET (1).xlsx
 
 # Logs
 *.log

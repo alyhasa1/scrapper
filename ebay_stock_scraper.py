@@ -314,7 +314,7 @@ def load_variants_from_excel(path: Path, limit: Optional[int] = None) -> List[Va
                 excel_row=idx + 2,  # account for excel header row + header data row
                 source_url=raw_url,
                 sr_no=getattr(row, "sr_no", None),
-                stock_name=getattr(row, "stock_name", None),
+                stock_name=product_name,
                 variation=color,
                 size=size_value,
                 dimensions=dimensions,
@@ -480,8 +480,55 @@ def normalize_label(text: str) -> str:
     return " ".join(text.lower().split())
 
 
+def extract_base_colour(colour_text: str) -> str:
+    """Extract base colour name by removing seller-specific suffixes."""
+    # Remove common suffixes like "- Greekey", "- Gel Back 59", "- MR (41)", etc.
+    text = colour_text.strip()
+    # Split on first dash and take the part before it
+    if ' - ' in text:
+        base = text.split(' - ')[0].strip()
+        return base.lower()
+    return text.lower()
+
+
+def extract_base_size(size_text: str) -> str:
+    """Extract base size by removing imperial measurements and extra text."""
+    # Remove imperial measurements in parentheses like "(1 ft 4 in x 2 ft)"
+    text = size_text.strip()
+    # Remove everything in parentheses
+    if '(' in text:
+        text = text.split('(')[0].strip()
+    # Remove "Most popular", "selected", etc.
+    text = text.replace('Most popular', '').replace('selected', '').strip()
+    return text.lower()
+
+
 def option_matches(option_text: str, target: str) -> bool:
-    return normalize_label(target) in normalize_label(option_text)
+    """Match option text against target with flexible matching for colours and sizes."""
+    option_normalized = normalize_label(option_text)
+    target_normalized = normalize_label(target)
+    
+    # First try exact substring match
+    if target_normalized in option_normalized:
+        return True
+    
+    # For colour matching: extract base colour names and compare
+    # Check if this looks like a colour option (contains " - ")
+    if ' - ' in option_text or ' - ' in target:
+        option_base = extract_base_colour(option_text)
+        target_base = extract_base_colour(target)
+        if option_base == target_base or target_base in option_base or option_base in target_base:
+            return True
+    
+    # For size matching: strip imperial measurements
+    # Check if this looks like a size (contains "cm" or "x")
+    if 'cm' in option_text.lower() or 'x' in option_text.lower():
+        option_base = extract_base_size(option_text)
+        target_base = extract_base_size(target)
+        if option_base == target_base or target_base in option_base:
+            return True
+    
+    return False
 
 
 def interpret_option_state(option_text: str, class_attr: Optional[str], aria_disabled: Optional[str]) -> Tuple[bool, str]:
