@@ -510,6 +510,7 @@ def option_matches(option_text: str, target: str) -> bool:
     
     # First try exact substring match
     if target_normalized in option_normalized:
+        LOGGER.debug("Match via substring: target '%s' found in option '%s'", target_normalized, option_normalized)
         return True
     
     # For colour matching: extract base colour names and compare
@@ -518,16 +519,24 @@ def option_matches(option_text: str, target: str) -> bool:
         option_base = extract_base_colour(option_text)
         target_base = extract_base_colour(target)
         if option_base == target_base or target_base in option_base or option_base in target_base:
+            LOGGER.debug("Match via colour base: option '%s' -> '%s', target '%s' -> '%s'", 
+                        option_text, option_base, target, target_base)
             return True
     
-    # For size matching: strip imperial measurements
-    # Check if this looks like a size (contains "cm" or "x")
-    if 'cm' in option_text.lower() or 'x' in option_text.lower():
+    # For size matching: strip imperial measurements and compare
+    # Check if this looks like a size (contains "cm" or "x" followed by digits)
+    if ('cm' in option_text.lower() or ('x' in option_text.lower() and any(c.isdigit() for c in option_text))):
         option_base = extract_base_size(option_text)
         target_base = extract_base_size(target)
-        if option_base == target_base or target_base in option_base:
+        # Normalize spaces around 'x' for comparison (e.g., "60x110" vs "60 x 110")
+        option_base_clean = option_base.replace(' ', '')
+        target_base_clean = target_base.replace(' ', '')
+        if option_base == target_base or target_base in option_base or option_base_clean == target_base_clean:
+            LOGGER.debug("Match via size base: option '%s' -> '%s', target '%s' -> '%s'", 
+                        option_text, option_base, target, target_base)
             return True
     
+    LOGGER.debug("No match: option '%s', target '%s'", option_text, target)
     return False
 
 
@@ -732,7 +741,19 @@ def select_option_from_group(page, group: Dict[str, Any], target_value: str) -> 
         button.press("Escape")
         return False, reason or "Option disabled"
 
-    chosen_option.click()
+    # Scroll option into view within dropdown and wait for it to be visible
+    try:
+        chosen_option.scroll_into_view_if_needed(timeout=3000)
+        chosen_option.wait_for(state="visible", timeout=3000)
+    except PlaywrightTimeoutError:
+        LOGGER.warning("Option not visible after scroll, attempting click anyway")
+    
+    try:
+        chosen_option.click(timeout=10000)
+    except PlaywrightTimeoutError:
+        button.press("Escape")
+        return False, f"Timeout clicking option '{target_value}' - element not interactable"
+    
     page.wait_for_timeout(800)
     return True, None
 
