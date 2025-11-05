@@ -1147,7 +1147,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     configure_logging(args.verbose)
 
     try:
-        records = load_variants_from_excel(args.excel, limit=args.limit)
+        # Load with combined limit (offset + limit) to get the range we need
+        combined_limit = None
+        if args.limit is not None:
+            combined_limit = args.offset + args.limit
+        records = load_variants_from_excel(args.excel, limit=combined_limit)
     except Exception as exc:  # pylint: disable=broad-except
         LOGGER.error("Failed to load spreadsheet: %s", exc)
         return 1
@@ -1156,12 +1160,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         LOGGER.warning("No listing rows found in spreadsheet.")
         return 0
     
-    # Apply offset if specified
+    # Apply offset to skip the first N records
     if args.offset > 0:
         if args.offset >= len(records):
             LOGGER.warning("Offset %d is >= total records %d, nothing to process.", args.offset, len(records))
             return 0
-        LOGGER.info("Skipping first %d rows, processing from row %d onwards", args.offset, args.offset + 1)
+        LOGGER.info("Skipping first %d rows, processing from row %d onwards (total: %d rows)", 
+                   args.offset, args.offset + 1, len(records) - args.offset)
         records = records[args.offset:]
 
     if args.engine == "chromium":
